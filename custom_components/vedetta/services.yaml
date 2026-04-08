@@ -1,0 +1,12 @@
+snapshot:
+  name: Snapshot
+  description: Fetch the latest snapshot from a Vedetta camera
+  fields:
+    entity_id:
+      name: Camera
+      description: The Vedetta camera entity
+      required: true
+      selector:
+        entity:
+          integration: vedetta
+          domain: camera
