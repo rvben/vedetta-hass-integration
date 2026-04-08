@@ -1,0 +1,25 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Vedetta",
+        "data": {
+          "host": "URL",
+          "api_token": "API Token",
+          "mqtt_prefix": "MQTT Topic Prefix"
+        },
+        "data_description": {
+          "host": "The URL of your Vedetta instance (e.g., http://192.168.1.180:5050)",
+          "api_token": "A long-lived API token generated in Vedetta",
+          "mqtt_prefix": "The MQTT topic prefix configured in Vedetta (default: vedetta)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to Vedetta. Check the URL and API token."
+    },
+    "abort": {
+      "already_configured": "This Vedetta instance is already configured."
+    }
+  }
+}
