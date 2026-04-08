@@ -5,25 +5,34 @@ import pytest
 from custom_components.vedetta.camera import VedettaCamera
 from custom_components.vedetta.coordinator import VedettaCoordinator
 
+ENTRY_ID = "test_entry_id"
+
+
+def make_entry(entry_id: str = ENTRY_ID) -> MagicMock:
+    entry = MagicMock()
+    entry.entry_id = entry_id
+    return entry
+
 
 def make_camera(camera_name: str = "front-door", ptz: bool = False) -> VedettaCamera:
     """Construct a VedettaCamera without a live HA instance."""
+    entry = make_entry()
     coordinator = MagicMock(spec=VedettaCoordinator)
     coordinator.api = AsyncMock()
     camera_dict = {"name": camera_name, "ptz": ptz}
-    return VedettaCamera(coordinator, camera_dict)
+    return VedettaCamera(entry, coordinator, camera_dict)
 
 
 async def test_camera_unique_id() -> None:
-    """Each camera gets a stable unique ID derived from its name."""
+    """Each camera gets a stable unique ID namespaced by entry_id."""
     cam = make_camera("backyard")
-    assert cam.unique_id == "vedetta_backyard_camera"
+    assert cam.unique_id == f"{ENTRY_ID}_backyard_camera"
 
 
 async def test_camera_unique_id_front_door() -> None:
-    """Unique ID contains the camera name verbatim."""
+    """Unique ID contains the entry_id prefix and camera name verbatim."""
     cam = make_camera("front-door")
-    assert cam.unique_id == "vedetta_front-door_camera"
+    assert cam.unique_id == f"{ENTRY_ID}_front-door_camera"
 
 
 async def test_camera_image() -> None:

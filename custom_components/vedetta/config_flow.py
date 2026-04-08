@@ -1,5 +1,4 @@
 import voluptuous as vol
-from aiohttp import ClientSession
 from homeassistant.config_entries import ConfigFlow
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
@@ -29,7 +28,12 @@ class VedettaConfigFlow(ConfigFlow, domain=DOMAIN):
                 session=session,
             )
 
-            if await client.check_health():
+            try:
+                healthy = await client.check_health()
+            except Exception:
+                healthy = False
+
+            if healthy:
                 await self.async_set_unique_id(user_input["host"])
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(title="Vedetta", data=user_input)

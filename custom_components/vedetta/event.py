@@ -25,7 +25,7 @@ async def async_setup_entry(
 ) -> None:
     coordinator: VedettaCoordinator = hass.data[DOMAIN][entry.entry_id]
     entities = [
-        VedettaDetectionEvent(hass, coordinator, camera["name"])
+        VedettaDetectionEvent(hass, entry, coordinator, camera["name"])
         for camera in coordinator.cameras
     ]
     async_add_entities(entities)
@@ -38,16 +38,17 @@ class VedettaDetectionEvent(EventEntity):
     def __init__(
         self,
         hass: HomeAssistant,
+        entry: ConfigEntry,
         coordinator: VedettaCoordinator,
         camera_name: str,
     ) -> None:
         self.hass = hass
         self._coordinator = coordinator
         self._camera_name = camera_name
-        self._attr_unique_id = f"vedetta_{camera_name}_detection_event"
+        self._attr_unique_id = f"{entry.entry_id}_{camera_name}_detection_event"
         self._attr_name = f"{camera_name} Detection"
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, camera_name)},
+            identifiers={(DOMAIN, f"{entry.entry_id}_{camera_name}")},
             name=camera_name,
             manufacturer="Vedetta",
         )
@@ -57,7 +58,8 @@ class VedettaDetectionEvent(EventEntity):
             prefix=self._coordinator.mqtt_prefix,
             camera=self._camera_name,
         )
-        await mqtt.async_subscribe(self.hass, topic, self._handle_event)
+        unsub = await mqtt.async_subscribe(self.hass, topic, self._handle_event)
+        self.async_on_remove(unsub)
 
     @callback
     def _handle_event(self, msg) -> None:

@@ -4,6 +4,9 @@ from unittest.mock import MagicMock, patch
 from custom_components.vedetta.event import VedettaDetectionEvent
 
 
+ENTRY_ID = "test_entry_id"
+
+
 def _make_entity(camera_name: str = "front-door") -> VedettaDetectionEvent:
     coordinator = MagicMock()
     coordinator.mqtt_prefix = "vedetta"
@@ -12,7 +15,7 @@ def _make_entity(camera_name: str = "front-door") -> VedettaDetectionEvent:
     entity = VedettaDetectionEvent.__new__(VedettaDetectionEvent)
     entity._coordinator = coordinator
     entity._camera_name = camera_name
-    entity._attr_unique_id = f"vedetta_{camera_name}_detection_event"
+    entity._attr_unique_id = f"{ENTRY_ID}_{camera_name}_detection_event"
     entity._attr_name = f"{camera_name} Detection"
     return entity
 

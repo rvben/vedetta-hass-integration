@@ -59,6 +59,10 @@ async def async_setup_entry(
             return
 
         camera_name, label = parts
+        # Skip known sub-topic prefixes that aren't object counts
+        if camera_name in ("events", "camera", "presence", "objects"):
+            return
+
         key = (camera_name, label)
         if key in discovered_object_count:
             return
@@ -94,16 +98,18 @@ async def async_setup_entry(
     # Subscribe to wildcard topics for dynamic discovery.
     # Object counts: {prefix}/+/+  (two-level wildcard catches camera/label)
     # Zone presence: {prefix}/presence/+/+
-    await mqtt.async_subscribe(
+    unsub_object_count = await mqtt.async_subscribe(
         hass,
         f"{prefix}/+/+",
         _handle_object_count_discovery,
     )
-    await mqtt.async_subscribe(
+    unsub_zone_presence = await mqtt.async_subscribe(
         hass,
         f"{prefix}/presence/+/+",
         _handle_zone_presence_discovery,
     )
+    entry.async_on_unload(unsub_object_count)
+    entry.async_on_unload(unsub_zone_presence)
 
 
 def _camera_device(entry: ConfigEntry, camera_name: str) -> DeviceInfo:
@@ -133,7 +139,8 @@ class VedettaAvailabilitySensor(BinarySensorEntity):
 
     async def async_added_to_hass(self) -> None:
         topic = MQTT_TOPIC_AVAILABILITY.format(prefix=self._prefix)
-        await mqtt.async_subscribe(self.hass, topic, self._handle_message)
+        unsub = await mqtt.async_subscribe(self.hass, topic, self._handle_message)
+        self.async_on_remove(unsub)
 
     @callback
     def _handle_message(self, msg: mqtt.ReceiveMessage) -> None:
@@ -159,7 +166,8 @@ class VedettaCameraStatusSensor(BinarySensorEntity):
         topic = MQTT_TOPIC_CAMERA_STATUS.format(
             prefix=self._prefix, camera=self._camera_name
         )
-        await mqtt.async_subscribe(self.hass, topic, self._handle_message)
+        unsub = await mqtt.async_subscribe(self.hass, topic, self._handle_message)
+        self.async_on_remove(unsub)
 
     @callback
     def _handle_message(self, msg: mqtt.ReceiveMessage) -> None:
@@ -196,7 +204,8 @@ class VedettaObjectCountSensor(BinarySensorEntity):
         topic = MQTT_TOPIC_OBJECT_COUNT.format(
             prefix=self._prefix, camera=self._camera_name, label=self._label
         )
-        await mqtt.async_subscribe(self.hass, topic, self._handle_message)
+        unsub = await mqtt.async_subscribe(self.hass, topic, self._handle_message)
+        self.async_on_remove(unsub)
 
     @callback
     def _handle_message(self, msg: mqtt.ReceiveMessage) -> None:
@@ -247,7 +256,8 @@ class VedettaZonePresenceSensor(BinarySensorEntity):
         topic = MQTT_TOPIC_PRESENCE.format(
             prefix=self._prefix, zone=self._zone, label=self._label
         )
-        await mqtt.async_subscribe(self.hass, topic, self._handle_message)
+        unsub = await mqtt.async_subscribe(self.hass, topic, self._handle_message)
+        self.async_on_remove(unsub)
 
     @callback
     def _handle_message(self, msg: mqtt.ReceiveMessage) -> None:

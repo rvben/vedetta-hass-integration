@@ -2,6 +2,8 @@ from pathlib import Path
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
+from homeassistant.exceptions import ServiceValidationError
+from homeassistant.helpers import entity_registry as er
 
 from .const import CONF_MQTT_PREFIX, DEFAULT_MQTT_PREFIX, DOMAIN
 from .coordinator import VedettaCoordinator
@@ -25,7 +27,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     async def handle_snapshot(call: ServiceCall) -> ServiceResponse:
         entity_id: str = call.data["entity_id"]
-        camera_name = entity_id.removeprefix("camera.vedetta_")
+        entity_registry = er.async_get(hass)
+        entity_entry = entity_registry.async_get(entity_id)
+        if entity_entry is None:
+            raise ServiceValidationError(f"Entity {entity_id} not found")
+        # Unique ID format: "{entry_id}_{camera_name}_camera"
+        unique_id = entity_entry.unique_id or ""
+        camera_name = unique_id.removeprefix(f"{entry.entry_id}_").removesuffix("_camera")
+        if not camera_name or camera_name == unique_id:
+            raise ServiceValidationError(f"Cannot determine camera name from {entity_id}")
         snapshot_data = await coordinator.api.get_snapshot(camera_name)
         snapshot_dir = Path(hass.config.path("www", "vedetta"))
         snapshot_dir.mkdir(parents=True, exist_ok=True)

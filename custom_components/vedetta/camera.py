@@ -18,7 +18,7 @@ async def async_setup_entry(
 ) -> None:
     coordinator: VedettaCoordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities(
-        VedettaCamera(coordinator, camera) for camera in coordinator.cameras
+        VedettaCamera(entry, coordinator, camera) for camera in coordinator.cameras
     )
 
 
@@ -33,13 +33,13 @@ class VedettaCamera(Camera):
     _attr_has_entity_name = True
     _attr_name = None  # use device name as entity name
 
-    def __init__(self, coordinator: VedettaCoordinator, camera: dict) -> None:
+    def __init__(self, entry: ConfigEntry, coordinator: VedettaCoordinator, camera: dict) -> None:
         super().__init__()
         self._coordinator = coordinator
         self._camera_name: str = camera["name"]
-        self._attr_unique_id = f"vedetta_{self._camera_name}_camera"
+        self._attr_unique_id = f"{entry.entry_id}_{self._camera_name}_camera"
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, self._camera_name)},
+            identifiers={(DOMAIN, f"{entry.entry_id}_{self._camera_name}")},
             name=self._camera_name,
             manufacturer="Vedetta",
         )

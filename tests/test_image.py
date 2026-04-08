@@ -4,6 +4,9 @@ from unittest.mock import MagicMock, patch
 from custom_components.vedetta.image import VedettaDetectionImage
 
 
+ENTRY_ID = "test_entry_id"
+
+
 def _make_entity(camera_name: str = "front-door", mqtt_prefix: str = "vedetta") -> VedettaDetectionImage:
     """Construct a VedettaDetectionImage without HA infrastructure."""
     coordinator = MagicMock()
@@ -15,7 +18,7 @@ def _make_entity(camera_name: str = "front-door", mqtt_prefix: str = "vedetta") 
     entity._camera = camera
     entity._camera_name = camera_name
     entity._image_data = None
-    entity._attr_unique_id = f"vedetta_{camera_name}_detection_image"
+    entity._attr_unique_id = f"{ENTRY_ID}_{camera_name}_detection_image"
     entity._attr_extra_state_attributes = {}
     entity._attr_image_last_updated = None
     entity.async_write_ha_state = MagicMock()

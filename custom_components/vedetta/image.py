@@ -20,7 +20,7 @@ async def async_setup_entry(
 ) -> None:
     coordinator: VedettaCoordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities(
-        VedettaDetectionImage(hass, coordinator, camera)
+        VedettaDetectionImage(hass, entry, coordinator, camera)
         for camera in coordinator.cameras
     )
 
@@ -34,6 +34,7 @@ class VedettaDetectionImage(ImageEntity):
     def __init__(
         self,
         hass: HomeAssistant,
+        entry: ConfigEntry,
         coordinator: VedettaCoordinator,
         camera: dict,
     ) -> None:
@@ -42,17 +43,18 @@ class VedettaDetectionImage(ImageEntity):
         self._camera = camera
         self._camera_name: str = camera["name"]
         self._image_data: bytes | None = None
-        self._attr_unique_id = f"vedetta_{self._camera_name}_detection_image"
+        self._attr_unique_id = f"{entry.entry_id}_{self._camera_name}_detection_image"
         self._attr_extra_state_attributes: dict = {}
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, self._camera_name)},
+            identifiers={(DOMAIN, f"{entry.entry_id}_{self._camera_name}")},
             name=self._camera_name,
             manufacturer="Vedetta",
         )
 
     async def async_added_to_hass(self) -> None:
         topic = f"{self._coordinator.mqtt_prefix}/{self._camera_name}/+/snapshot"
-        await mqtt.async_subscribe(self.hass, topic, self._handle_snapshot)
+        unsub = await mqtt.async_subscribe(self.hass, topic, self._handle_snapshot)
+        self.async_on_remove(unsub)
 
     @callback
     def _handle_snapshot(self, msg: mqtt.ReceiveMessage) -> None:
