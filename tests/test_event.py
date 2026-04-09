@@ -53,6 +53,35 @@ def test_detection_start_event() -> None:
     entity.async_write_ha_state.assert_called_once()
 
 
+def test_detection_event_name_is_terse() -> None:
+    """With has_entity_name=True, _attr_name must not include the camera prefix."""
+    from homeassistant.config_entries import ConfigEntry
+
+    entry = MagicMock(spec=ConfigEntry)
+    entry.entry_id = ENTRY_ID
+    coordinator = MagicMock()
+    coordinator.mqtt_prefix = "vedetta"
+    coordinator.cameras = [{"name": "front-door"}]
+
+    entity = VedettaDetectionEvent(MagicMock(), entry, coordinator, "front-door")
+    assert entity._attr_name == "Detection"
+    assert "front-door" not in entity._attr_name
+
+
+def test_detection_event_device_name_prefixed() -> None:
+    """DeviceInfo name includes 'Vedetta ' prefix to avoid collision."""
+    from homeassistant.config_entries import ConfigEntry
+
+    entry = MagicMock(spec=ConfigEntry)
+    entry.entry_id = ENTRY_ID
+    coordinator = MagicMock()
+    coordinator.mqtt_prefix = "vedetta"
+    coordinator.cameras = [{"name": "front-door"}]
+
+    entity = VedettaDetectionEvent(MagicMock(), entry, coordinator, "front-door")
+    assert entity.device_info["name"] == "Vedetta front-door"
+
+
 def test_detection_end_event() -> None:
     entity = _make_entity()
     entity._trigger_event = MagicMock()

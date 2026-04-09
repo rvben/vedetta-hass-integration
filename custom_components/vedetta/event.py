@@ -46,10 +46,10 @@ class VedettaDetectionEvent(EventEntity):
         self._coordinator = coordinator
         self._camera_name = camera_name
         self._attr_unique_id = f"{entry.entry_id}_{camera_name}_detection_event"
-        self._attr_name = f"{camera_name} Detection"
+        self._attr_name = "Detection"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"{entry.entry_id}_{camera_name}")},
-            name=camera_name,
+            name=f"Vedetta {camera_name}",
             manufacturer="Vedetta",
         )
 

@@ -37,10 +37,11 @@ class VedettaCamera(Camera):
         super().__init__()
         self._coordinator = coordinator
         self._camera_name: str = camera["name"]
+        self._active_sessions: set[str] = set()
         self._attr_unique_id = f"{entry.entry_id}_{self._camera_name}_camera"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"{entry.entry_id}_{self._camera_name}")},
-            name=self._camera_name,
+            name=f"Vedetta {self._camera_name}",
             manufacturer="Vedetta",
         )
 
@@ -59,9 +60,21 @@ class VedettaCamera(Camera):
         """Handle a WebRTC offer by proxying it to the Vedetta API.
 
         The API returns an SDP answer which is forwarded to the frontend via
-        the send_message callback.
+        the send_message callback. Duplicate calls for the same session_id are
+        silently ignored — the first answer already sent remains valid.
         """
-        response = await self._coordinator.api.webrtc_offer(
-            self._camera_name, offer_sdp
-        )
-        send_message(WebRTCAnswer(answer=response["sdp"]))
+        if session_id in self._active_sessions:
+            return
+        self._active_sessions.add(session_id)
+        try:
+            response = await self._coordinator.api.webrtc_offer(
+                self._camera_name, offer_sdp
+            )
+            send_message(WebRTCAnswer(answer=response["sdp"]))
+        except Exception:
+            self._active_sessions.discard(session_id)
+            raise
+
+    def close_webrtc_session(self, session_id: str) -> None:
+        """Remove a closed WebRTC session so the camera can be re-opened."""
+        self._active_sessions.discard(session_id)

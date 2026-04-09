@@ -31,6 +31,7 @@ async def async_setup_entry(
 
 class VedettaPTZButton(ButtonEntity):
     _attr_entity_category = EntityCategory.CONFIG
+    _attr_has_entity_name = True
 
     def __init__(
         self,
@@ -42,10 +43,10 @@ class VedettaPTZButton(ButtonEntity):
         self._camera_name = camera_name
         self._direction = direction
         self._attr_unique_id = f"{camera_name}_ptz_{direction}"
-        self._attr_name = f"{camera_name} PTZ {direction.replace('_', ' ').title()}"
+        self._attr_name = f"PTZ {direction.replace('_', ' ').title()}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, camera_name)},
-            name=camera_name,
+            name=f"Vedetta {camera_name}",
             manufacturer="Vedetta",
         )
 

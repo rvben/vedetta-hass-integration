@@ -98,3 +98,94 @@ async def test_webrtc_offer_different_camera() -> None:
     )
 
     cam._coordinator.api.webrtc_offer.assert_called_once_with("backyard", "sdp-offer")
+
+
+async def test_webrtc_offer_duplicate_session_ignored() -> None:
+    """A duplicate offer for an in-flight session is silently dropped."""
+    cam = make_camera("front-door")
+    cam._coordinator.api.webrtc_offer = AsyncMock(
+        return_value={"type": "answer", "sdp": "sdp-answer"}
+    )
+
+    sent_messages: list = []
+
+    await cam.async_handle_async_webrtc_offer(
+        offer_sdp="offer",
+        session_id="dup-session",
+        send_message=sent_messages.append,
+    )
+    # Second call with the same session_id must not produce another answer.
+    await cam.async_handle_async_webrtc_offer(
+        offer_sdp="offer",
+        session_id="dup-session",
+        send_message=sent_messages.append,
+    )
+
+    assert len(sent_messages) == 1
+    cam._coordinator.api.webrtc_offer.assert_called_once()
+
+
+async def test_webrtc_close_session_allows_reopen() -> None:
+    """Closing a session removes it so a new offer for the same id is accepted."""
+    cam = make_camera("front-door")
+    cam._coordinator.api.webrtc_offer = AsyncMock(
+        return_value={"type": "answer", "sdp": "sdp-answer"}
+    )
+
+    sent_messages: list = []
+
+    await cam.async_handle_async_webrtc_offer(
+        offer_sdp="offer",
+        session_id="session-reopen",
+        send_message=sent_messages.append,
+    )
+    cam.close_webrtc_session("session-reopen")
+
+    await cam.async_handle_async_webrtc_offer(
+        offer_sdp="offer",
+        session_id="session-reopen",
+        send_message=sent_messages.append,
+    )
+
+    assert len(sent_messages) == 2
+    assert cam._coordinator.api.webrtc_offer.call_count == 2
+
+
+async def test_webrtc_offer_error_removes_session() -> None:
+    """A failed API call removes the session so the offer can be retried."""
+    cam = make_camera("front-door")
+    cam._coordinator.api.webrtc_offer = AsyncMock(side_effect=RuntimeError("timeout"))
+
+    sent_messages: list = []
+
+    with pytest.raises(RuntimeError):
+        await cam.async_handle_async_webrtc_offer(
+            offer_sdp="offer",
+            session_id="session-fail",
+            send_message=sent_messages.append,
+        )
+
+    # Session must not remain active after the error.
+    assert "session-fail" not in cam._active_sessions
+
+    # A subsequent offer for the same session_id must be forwarded.
+    cam._coordinator.api.webrtc_offer = AsyncMock(
+        return_value={"type": "answer", "sdp": "sdp-answer"}
+    )
+    await cam.async_handle_async_webrtc_offer(
+        offer_sdp="offer",
+        session_id="session-fail",
+        send_message=sent_messages.append,
+    )
+    assert len(sent_messages) == 1
+
+
+async def test_camera_device_name_prefixed() -> None:
+    """DeviceInfo name is prefixed with 'Vedetta ' to avoid collision with NVR auto-discovery."""
+    cam = make_camera("front-door")
+    assert cam.device_info["name"] == "Vedetta front-door"
+
+
+async def test_camera_device_name_prefixed_backyard() -> None:
+    cam = make_camera("backyard")
+    assert cam.device_info["name"] == "Vedetta backyard"

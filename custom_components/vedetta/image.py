@@ -47,7 +47,7 @@ class VedettaDetectionImage(ImageEntity):
         self._attr_extra_state_attributes: dict = {}
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"{entry.entry_id}_{self._camera_name}")},
-            name=self._camera_name,
+            name=f"Vedetta {self._camera_name}",
             manufacturer="Vedetta",
         )
 

@@ -175,3 +175,35 @@ def test_zone_presence_unknown_payload_is_off() -> None:
     sensor._attr_is_on = True
     sensor._handle_message(_make_msg("idle"))
     assert sensor._attr_is_on is False
+
+
+# ---------------------------------------------------------------------------
+# Entity naming (has_entity_name = True — no camera prefix in _attr_name)
+# ---------------------------------------------------------------------------
+
+
+def test_camera_status_sensor_name_is_terse() -> None:
+    """With has_entity_name=True the name must not include the camera prefix."""
+    entry = MagicMock()
+    entry.entry_id = "eid"
+    sensor = VedettaCameraStatusSensor(entry, "vedetta", "garage")
+    assert sensor._attr_name == "Status"
+    assert "garage" not in sensor._attr_name
+
+
+def test_object_count_sensor_name_contains_label_only() -> None:
+    """Object count name includes the label but not the camera name."""
+    entry = MagicMock()
+    entry.entry_id = "eid"
+    sensor = VedettaObjectCountSensor(entry, "vedetta", "front_door", "person")
+    assert sensor._attr_name == "person Count"
+    assert "front_door" not in sensor._attr_name
+
+
+def test_zone_presence_sensor_name_has_no_zone_prefix() -> None:
+    """Zone presence name is '{zone} {label}' (no 'Zone' prefix) under NVR device."""
+    entry = MagicMock()
+    entry.entry_id = "eid"
+    sensor = VedettaZonePresenceSensor(entry, "vedetta", "driveway", "car")
+    assert sensor._attr_name == "driveway car"
+    assert sensor._attr_name.startswith("Zone") is False

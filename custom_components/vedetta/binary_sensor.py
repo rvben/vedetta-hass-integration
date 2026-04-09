@@ -158,7 +158,7 @@ class VedettaCameraStatusSensor(BinarySensorEntity):
         self._prefix = prefix
         self._camera_name = camera_name
         self._attr_unique_id = f"{entry.entry_id}_{camera_name}_status"
-        self._attr_name = f"{camera_name} Status"
+        self._attr_name = "Status"
         self._attr_is_on = False
         self._attr_device_info = _camera_device(entry, camera_name)
 
@@ -196,7 +196,7 @@ class VedettaObjectCountSensor(BinarySensorEntity):
         self._label = label
         self._count = 0
         self._attr_unique_id = f"{entry.entry_id}_{camera_name}_{label}_count"
-        self._attr_name = f"{camera_name} {label} Count"
+        self._attr_name = f"{label} Count"
         self._attr_is_on = False
         self._attr_device_info = _camera_device(entry, camera_name)
 
@@ -244,7 +244,7 @@ class VedettaZonePresenceSensor(BinarySensorEntity):
         self._zone = zone
         self._label = label
         self._attr_unique_id = f"{entry.entry_id}_zone_{zone}_{label}"
-        self._attr_name = f"Zone {zone} {label}"
+        self._attr_name = f"{zone} {label}"
         self._attr_is_on = False
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
