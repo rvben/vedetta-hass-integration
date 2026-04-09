@@ -50,10 +50,17 @@ class VedettaApiClient:
             return await resp.json()
 
     async def send_ptz(self, camera: str, command: str) -> None:
+        # Map flat direction names to Vedetta's {action, direction} model.
+        # up/down/left/right are "move" actions; zoom_in/zoom_out are "zoom"
+        # actions with direction "in"/"out".
+        if command.startswith("zoom_"):
+            payload = {"action": "zoom", "direction": command.removeprefix("zoom_")}
+        else:
+            payload = {"action": "move", "direction": command}
         async with self._session.post(
             f"{self._host}/api/cameras/{camera}/ptz",
             headers=self._headers,
-            json={"command": command},
+            json=payload,
         ) as resp:
             if resp.status != 200:
                 raise VedettaApiError(f"PTZ command failed: {resp.status}")

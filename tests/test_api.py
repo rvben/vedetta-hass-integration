@@ -72,19 +72,51 @@ async def test_get_snapshot(api_client: VedettaApiClient) -> None:
     )
 
 
-async def test_send_ptz_command(api_client: VedettaApiClient) -> None:
+async def test_send_ptz_move_command(api_client: VedettaApiClient) -> None:
     mock_response = AsyncMock()
     mock_response.status = 200
     mock_response.__aenter__ = AsyncMock(return_value=mock_response)
     mock_response.__aexit__ = AsyncMock(return_value=False)
     api_client._session.post = MagicMock(return_value=mock_response)
 
-    await api_client.send_ptz("front-door", "pan_left")
+    await api_client.send_ptz("garage", "left")
 
     api_client._session.post.assert_called_once_with(
-        "http://192.168.1.180:5050/api/cameras/front-door/ptz",
+        "http://192.168.1.180:5050/api/cameras/garage/ptz",
         headers={"Authorization": "Bearer test-token"},
-        json={"command": "pan_left"},
+        json={"action": "move", "direction": "left"},
+    )
+
+
+async def test_send_ptz_zoom_in_command(api_client: VedettaApiClient) -> None:
+    mock_response = AsyncMock()
+    mock_response.status = 200
+    mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_response.__aexit__ = AsyncMock(return_value=False)
+    api_client._session.post = MagicMock(return_value=mock_response)
+
+    await api_client.send_ptz("garage", "zoom_in")
+
+    api_client._session.post.assert_called_once_with(
+        "http://192.168.1.180:5050/api/cameras/garage/ptz",
+        headers={"Authorization": "Bearer test-token"},
+        json={"action": "zoom", "direction": "in"},
+    )
+
+
+async def test_send_ptz_zoom_out_command(api_client: VedettaApiClient) -> None:
+    mock_response = AsyncMock()
+    mock_response.status = 200
+    mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_response.__aexit__ = AsyncMock(return_value=False)
+    api_client._session.post = MagicMock(return_value=mock_response)
+
+    await api_client.send_ptz("garage", "zoom_out")
+
+    api_client._session.post.assert_called_once_with(
+        "http://192.168.1.180:5050/api/cameras/garage/ptz",
+        headers={"Authorization": "Bearer test-token"},
+        json={"action": "zoom", "direction": "out"},
     )
 
 
@@ -167,4 +199,4 @@ async def test_send_ptz_command_error(api_client: VedettaApiClient) -> None:
     api_client._session.post = MagicMock(return_value=mock_response)
 
     with pytest.raises(VedettaApiError, match="PTZ command failed: 404"):
-        await api_client.send_ptz("nonexistent", "pan_left")
+        await api_client.send_ptz("nonexistent", "left")
