@@ -10,6 +10,7 @@ from homeassistant.components.media_source import (
     PlayMedia,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
 
@@ -37,22 +38,22 @@ class VedettaMediaSource(MediaSource):
 
         if identifier.startswith("clip/"):
             event_id = identifier[len("clip/"):]
-            url = (
-                f"{self._coordinator.api._host}/api/events/{event_id}/clip"
-                f"?token={self._coordinator.api._token}"
+            # Proxy through the HA integration to add bearer auth server-side.
+            return PlayMedia(
+                url=f"/api/vedetta/clip/{event_id}",
+                mime_type="video/mp4",
             )
-            return PlayMedia(url=url, mime_type="video/mp4")
 
-        if identifier.startswith("segment/"):
-            # segment/{camera}/{start}/{end}
-            parts = identifier.split("/", 3)
-            _, camera, start, end = parts
-            url = (
-                f"{self._coordinator.api._host}/api/recordings/hls"
-                f"?camera={camera}&start={start}&end={end}"
-                f"&token={self._coordinator.api._token}"
+        if identifier.startswith("day/"):
+            # day/{camera}/{YYYY-MM-DD}
+            parts = identifier.split("/", 2)
+            _, camera, day = parts
+            start = f"{day}T00:00:00Z"
+            end = f"{day}T23:59:59Z"
+            return PlayMedia(
+                url=f"/api/vedetta/export/{camera}?start={start}&end={end}",
+                mime_type="video/mp4",
             )
-            return PlayMedia(url=url, mime_type="application/x-mpegURL")
 
         raise ValueError(f"Cannot resolve media identifier: {identifier}")
 
@@ -75,10 +76,7 @@ class VedettaMediaSource(MediaSource):
             if len(parts) == 1:
                 return self._browse_recordings_root()
             camera = parts[1]
-            if len(parts) == 2:
-                return await self._browse_recordings_calendar(camera)
-            date = parts[2]
-            return await self._browse_recording_segments(camera, date)
+            return await self._browse_recordings_calendar(camera)
 
         raise ValueError(f"Unknown media source identifier: {identifier}")
 
@@ -198,18 +196,22 @@ class VedettaMediaSource(MediaSource):
         )
 
     async def _browse_recordings_calendar(self, camera: str) -> BrowseMediaSource:
-        calendar = await self._coordinator.api.get_recordings_calendar(camera)
+        # Query the current month. Vedetta's calendar returns day numbers
+        # (1-31) for the month that have recordings.
+        today = dt_util.now().date()
+        month = today.strftime("%Y-%m")
+        days = await self._coordinator.api.get_recordings_calendar(camera, month)
         children = [
             BrowseMediaSource(
                 domain=DOMAIN,
-                identifier=f"recordings/{camera}/{entry['date']}",
-                media_class=MediaClass.DIRECTORY,
+                identifier=f"day/{camera}/{today.replace(day=day).isoformat()}",
+                media_class=MediaClass.VIDEO,
                 media_content_type=MediaType.VIDEO,
-                title=entry["date"],
-                can_play=False,
-                can_expand=True,
+                title=today.replace(day=day).isoformat(),
+                can_play=True,
+                can_expand=False,
             )
-            for entry in calendar
+            for day in sorted(days, reverse=True)
         ]
         return BrowseMediaSource(
             domain=DOMAIN,
@@ -217,42 +219,6 @@ class VedettaMediaSource(MediaSource):
             media_class=MediaClass.DIRECTORY,
             media_content_type=MediaType.VIDEO,
             title=camera,
-            can_play=False,
-            can_expand=True,
-            children=children,
-        )
-
-    async def _browse_recording_segments(
-        self, camera: str, date: str
-    ) -> BrowseMediaSource:
-        # Use date boundaries: date 00:00 to date+1 00:00
-        start = f"{date}T00:00:00"
-        end = f"{date}T23:59:59"
-        segments = await self._coordinator.api.get_recording_segments(
-            camera, start, end
-        )
-        children = []
-        for segment in segments:
-            seg_start = segment.get("start", "")
-            seg_end = segment.get("end", "")
-            title = f"{seg_start} – {seg_end}"
-            children.append(
-                BrowseMediaSource(
-                    domain=DOMAIN,
-                    identifier=f"segment/{camera}/{seg_start}/{seg_end}",
-                    media_class=MediaClass.VIDEO,
-                    media_content_type=MediaType.VIDEO,
-                    title=title,
-                    can_play=True,
-                    can_expand=False,
-                )
-            )
-        return BrowseMediaSource(
-            domain=DOMAIN,
-            identifier=f"recordings/{camera}/{date}",
-            media_class=MediaClass.DIRECTORY,
-            media_content_type=MediaType.VIDEO,
-            title=date,
             can_play=False,
             can_expand=True,
             children=children,

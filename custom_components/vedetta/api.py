@@ -99,27 +99,36 @@ class VedettaApiClient:
                 raise VedettaApiError(f"Failed to get thumbnail: {resp.status}")
             return await resp.read()
 
-    async def get_recordings_calendar(self, camera: str) -> list[dict]:
+    async def get_recordings_calendar(
+        self, camera: str, month: str
+    ) -> list[int]:
+        """Return days (1-31) that have recordings for the given camera and month.
+
+        month is in YYYY-MM format.
+        """
         async with self._session.get(
             f"{self._host}/api/recordings/calendar",
             headers=self._headers,
-            params={"camera": camera},
+            params={"camera": camera, "month": month},
         ) as resp:
             if resp.status != 200:
                 raise VedettaApiError(f"Failed to get calendar: {resp.status}")
-            return await resp.json()
+            data = await resp.json()
+            return data.get("days", [])
 
     async def get_recording_segments(
-        self, camera: str, start: str, end: str
+        self, camera: str, date: str
     ) -> list[dict]:
+        """Return segments for a camera on a given date (YYYY-MM-DD)."""
         async with self._session.get(
-            f"{self._host}/api/recordings/segments",
+            f"{self._host}/api/recordings/segments/{camera}",
             headers=self._headers,
-            params={"camera": camera, "start": start, "end": end},
+            params={"date": date},
         ) as resp:
             if resp.status != 200:
                 raise VedettaApiError(f"Failed to get segments: {resp.status}")
-            return await resp.json()
+            data = await resp.json()
+            return data.get("items", data) if isinstance(data, dict) else data
 
     async def get_mjpeg_url(self, camera: str) -> str:
         return f"{self._host}/api/cameras/{camera}/mjpeg"

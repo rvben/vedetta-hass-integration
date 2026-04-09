@@ -154,54 +154,30 @@ async def test_browse_recordings_cameras() -> None:
 
 
 async def test_browse_recordings_calendar() -> None:
-    """Browsing 'recordings/{camera}' returns date nodes from the API."""
+    """Browsing 'recordings/{camera}' returns playable day nodes from the calendar."""
     source = _make_source([{"name": "front-door"}])
     source._coordinator.api.get_recordings_calendar = AsyncMock(
-        return_value=[
-            {"date": "2026-04-08"},
-            {"date": "2026-04-07"},
-        ]
+        return_value=[7, 8, 9]
     )
 
     result = await source.async_browse_media(_make_item("recordings/front-door"))
 
-    source._coordinator.api.get_recordings_calendar.assert_called_once_with(
-        "front-door"
-    )
-    assert len(result.children) == 2
-    dates = {child.title for child in result.children}
-    assert dates == {"2026-04-08", "2026-04-07"}
-    assert result.children[0].identifier == "recordings/front-door/2026-04-08"
+    # get_recordings_calendar is called with camera and current month
+    args, _ = source._coordinator.api.get_recordings_calendar.call_args
+    assert args[0] == "front-door"
+    # month arg is in YYYY-MM format
+    assert len(args[1]) == 7 and args[1][4] == "-"
 
-
-# ---------------------------------------------------------------------------
-# Recordings — segments for a date
-# ---------------------------------------------------------------------------
-
-
-async def test_browse_recording_segments() -> None:
-    """Browsing 'recordings/{camera}/{date}' returns playable segment nodes."""
-    source = _make_source([{"name": "front-door"}])
-    source._coordinator.api.get_recording_segments = AsyncMock(
-        return_value=[
-            {"start": "2026-04-08T08:00:00", "end": "2026-04-08T08:15:00"},
-            {"start": "2026-04-08T09:00:00", "end": "2026-04-08T09:30:00"},
-        ]
-    )
-
-    result = await source.async_browse_media(
-        _make_item("recordings/front-door/2026-04-08")
-    )
-
-    source._coordinator.api.get_recording_segments.assert_called_once_with(
-        "front-door", "2026-04-08T00:00:00", "2026-04-08T23:59:59"
-    )
-    assert len(result.children) == 2
-    first = result.children[0]
-    assert first.can_play is True
-    assert first.can_expand is False
-    assert "2026-04-08T08:00:00" in first.identifier
-    assert first.identifier.startswith("segment/front-door/")
+    assert len(result.children) == 3
+    # Days are listed in reverse chronological order (newest first)
+    titles = [c.title for c in result.children]
+    assert titles[0].endswith("-09")
+    assert titles[-1].endswith("-07")
+    # Each entry is playable and uses the day/{camera}/{date} identifier
+    for child in result.children:
+        assert child.can_play is True
+        assert child.can_expand is False
+        assert child.identifier.startswith("day/front-door/")
 
 
 # ---------------------------------------------------------------------------
@@ -210,25 +186,26 @@ async def test_browse_recording_segments() -> None:
 
 
 async def test_resolve_clip() -> None:
-    """Resolving a clip identifier returns a video/mp4 PlayMedia."""
+    """Resolving a clip returns a proxied HA URL (no upstream token leak)."""
     source = _make_source()
     item = _make_item("clip/evt-abc")
     result = await source.async_resolve_media(item)
 
     assert result.mime_type == "video/mp4"
-    assert "evt-abc" in result.url
-    assert "nvr.local" in result.url
+    assert result.url == "/api/vedetta/clip/evt-abc"
 
 
-async def test_resolve_segment() -> None:
-    """Resolving a segment identifier returns an HLS PlayMedia."""
+async def test_resolve_day() -> None:
+    """Resolving a day returns a proxied HA export URL spanning the full day."""
     source = _make_source()
-    item = _make_item("segment/front-door/2026-04-08T08:00:00/2026-04-08T08:15:00")
+    item = _make_item("day/front-door/2026-04-08")
     result = await source.async_resolve_media(item)
 
-    assert result.mime_type == "application/x-mpegURL"
-    assert "front-door" in result.url
-    assert "nvr.local" in result.url
+    assert result.mime_type == "video/mp4"
+    assert result.url == (
+        "/api/vedetta/export/front-door"
+        "?start=2026-04-08T00:00:00Z&end=2026-04-08T23:59:59Z"
+    )
 
 
 async def test_resolve_unknown_raises() -> None:

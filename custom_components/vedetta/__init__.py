@@ -7,6 +7,7 @@ from homeassistant.helpers import entity_registry as er
 
 from .const import CONF_MQTT_PREFIX, DEFAULT_MQTT_PREFIX, DOMAIN
 from .coordinator import VedettaCoordinator
+from .http import async_register_views
 
 PLATFORMS = ["binary_sensor", "camera", "image", "event", "button"]
 
@@ -22,6 +23,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = coordinator
+
+    async_register_views(hass)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
