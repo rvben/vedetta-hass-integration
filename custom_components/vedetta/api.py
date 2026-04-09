@@ -27,7 +27,8 @@ class VedettaApiClient:
         ) as resp:
             if resp.status != 200:
                 raise VedettaApiError(f"Failed to get cameras: {resp.status}")
-            return await resp.json()
+            data = await resp.json()
+            return data.get("items", data) if isinstance(data, dict) else data
 
     async def get_snapshot(self, camera: str) -> bytes:
         async with self._session.get(
@@ -70,7 +71,8 @@ class VedettaApiClient:
         ) as resp:
             if resp.status != 200:
                 raise VedettaApiError(f"Failed to get events: {resp.status}")
-            return await resp.json()
+            data = await resp.json()
+            return data.get("items", data) if isinstance(data, dict) else data
 
     async def get_event_clip(self, event_id: str) -> bytes:
         async with self._session.get(
