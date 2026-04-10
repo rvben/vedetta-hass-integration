@@ -21,7 +21,7 @@ async def async_setup_entry(
     coordinator: VedettaCoordinator = hass.data[DOMAIN][entry.entry_id]
 
     entities = [
-        VedettaPTZButton(coordinator, cam["name"], direction)
+        VedettaPTZButton(entry, coordinator, cam["name"], direction)
         for cam in coordinator.cameras
         if cam.get("ptz")
         for direction in PTZ_DIRECTIONS
@@ -35,6 +35,7 @@ class VedettaPTZButton(ButtonEntity):
 
     def __init__(
         self,
+        entry: ConfigEntry,
         coordinator: VedettaCoordinator,
         camera_name: str,
         direction: str,
@@ -42,10 +43,10 @@ class VedettaPTZButton(ButtonEntity):
         self._coordinator = coordinator
         self._camera_name = camera_name
         self._direction = direction
-        self._attr_unique_id = f"{camera_name}_ptz_{direction}"
+        self._attr_unique_id = f"{entry.entry_id}_{camera_name}_ptz_{direction}"
         self._attr_name = f"PTZ {direction.replace('_', ' ').title()}"
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, camera_name)},
+            identifiers={(DOMAIN, f"{entry.entry_id}_{camera_name}")},
             name=f"Vedetta {camera_name}",
             manufacturer="Vedetta",
         )
