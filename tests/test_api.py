@@ -200,3 +200,74 @@ async def test_send_ptz_command_error(api_client: VedettaApiClient) -> None:
 
     with pytest.raises(VedettaApiError, match="PTZ command failed: 404"):
         await api_client.send_ptz("nonexistent", "left")
+
+
+async def test_get_health_ok(api_client: VedettaApiClient) -> None:
+    health_data = {
+        "status": "ok",
+        "uptime": "38s",
+        "version": "75ce3c5",
+        "checks": {
+            "cameras": {"online": 5, "total": 5},
+            "database": "ok",
+            "mqtt": "connected",
+            "detection": {
+                "state": "ok",
+                "openh264_loaded": True,
+                "openh264_version": "2.6.0",
+            },
+        },
+    }
+    mock_response = AsyncMock()
+    mock_response.status = 200
+    mock_response.json = AsyncMock(return_value=health_data)
+    mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_response.__aexit__ = AsyncMock(return_value=False)
+    api_client._session.get = MagicMock(return_value=mock_response)
+
+    result = await api_client.get_health()
+
+    assert result == health_data
+    api_client._session.get.assert_called_once_with(
+        "http://192.168.1.180:5050/api/health",
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+
+async def test_get_health_error(api_client: VedettaApiClient) -> None:
+    mock_response = AsyncMock()
+    mock_response.status = 503
+    mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_response.__aexit__ = AsyncMock(return_value=False)
+    api_client._session.get = MagicMock(return_value=mock_response)
+
+    with pytest.raises(VedettaApiError, match="Health check failed: 503"):
+        await api_client.get_health()
+
+
+async def test_get_health_degraded(api_client: VedettaApiClient) -> None:
+    """get_health returns the full degraded response body when status is degraded."""
+    health_data = {
+        "status": "degraded",
+        "uptime": "120s",
+        "version": "75ce3c5",
+        "checks": {
+            "detection": {
+                "state": "disabled",
+                "openh264_loaded": False,
+                "reason": "OpenH264 codec not loaded: missing library",
+            },
+        },
+    }
+    mock_response = AsyncMock()
+    mock_response.status = 200
+    mock_response.json = AsyncMock(return_value=health_data)
+    mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_response.__aexit__ = AsyncMock(return_value=False)
+    api_client._session.get = MagicMock(return_value=mock_response)
+
+    result = await api_client.get_health()
+
+    assert result["status"] == "degraded"
+    assert result["checks"]["detection"]["openh264_loaded"] is False
+    assert "reason" in result["checks"]["detection"]

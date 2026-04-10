@@ -4,11 +4,12 @@ import logging
 from typing import Any
 
 from homeassistant.components import mqtt
-from homeassistant.components.binary_sensor import BinarySensorEntity
+from homeassistant.components.binary_sensor import BinarySensorDeviceClass, BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     DOMAIN,
@@ -30,6 +31,10 @@ async def async_setup_entry(
     prefix = coordinator.mqtt_prefix
 
     entities: list[BinarySensorEntity] = []
+
+    # NVR-level health sensors (polled via HTTP)
+    entities.append(VedettaOperationalSensor(entry, coordinator))
+    entities.append(VedettaDetectionSensor(entry, coordinator))
 
     # One availability sensor for the whole Vedetta system
     entities.append(VedettaAvailabilitySensor(entry, prefix))
@@ -263,3 +268,73 @@ class VedettaZonePresenceSensor(BinarySensorEntity):
     def _handle_message(self, msg: mqtt.ReceiveMessage) -> None:
         self._attr_is_on = msg.payload == "entered"
         self.async_write_ha_state()
+
+
+def _nvr_device(entry: ConfigEntry) -> DeviceInfo:
+    return DeviceInfo(
+        identifiers={(DOMAIN, entry.entry_id)},
+        name="Vedetta NVR",
+        manufacturer="Vedetta",
+    )
+
+
+class VedettaOperationalSensor(CoordinatorEntity, BinarySensorEntity):
+    """Binary sensor that is ON (problem) when any Vedetta subsystem is degraded.
+
+    Polls the /api/health endpoint via DataUpdateCoordinator. Device class PROBLEM
+    means ON = something is wrong, OFF = all systems healthy.
+    """
+
+    _attr_has_entity_name = True
+    _attr_name = "Operational"
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+
+    def __init__(self, entry: ConfigEntry, coordinator) -> None:
+        super().__init__(coordinator.health_coordinator)
+        self._attr_unique_id = f"{entry.entry_id}_operational"
+        self._attr_device_info = _nvr_device(entry)
+
+    @property
+    def is_on(self) -> bool:
+        data = self.coordinator.data or {}
+        return data.get("status", "ok") != "ok"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return (self.coordinator.data or {}).get("checks", {})
+
+
+class VedettaDetectionSensor(CoordinatorEntity, BinarySensorEntity):
+    """Binary sensor that is ON when the Vedetta detection pipeline is running.
+
+    Polls the /api/health endpoint via DataUpdateCoordinator. Device class RUNNING
+    means ON = detection pipeline is active, OFF = detection is disabled or broken.
+    """
+
+    _attr_has_entity_name = True
+    _attr_name = "Detection"
+    _attr_device_class = BinarySensorDeviceClass.RUNNING
+
+    def __init__(self, entry: ConfigEntry, coordinator) -> None:
+        super().__init__(coordinator.health_coordinator)
+        self._attr_unique_id = f"{entry.entry_id}_detection"
+        self._attr_device_info = _nvr_device(entry)
+
+    @property
+    def is_on(self) -> bool:
+        data = self.coordinator.data or {}
+        detection = data.get("checks", {}).get("detection", {})
+        return detection.get("state", "") == "ok"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        data = self.coordinator.data or {}
+        detection = data.get("checks", {}).get("detection", {})
+        attrs: dict[str, Any] = {
+            "openh264_loaded": detection.get("openh264_loaded"),
+        }
+        if "openh264_version" in detection:
+            attrs["openh264_version"] = detection["openh264_version"]
+        if "reason" in detection:
+            attrs["reason"] = detection["reason"]
+        return attrs

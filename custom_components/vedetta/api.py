@@ -21,6 +21,14 @@ class VedettaApiClient:
         ) as resp:
             return resp.status == 200
 
+    async def get_health(self) -> dict:
+        async with self._session.get(
+            f"{self._host}/api/health", headers=self._headers
+        ) as resp:
+            if resp.status != 200:
+                raise VedettaApiError(f"Health check failed: {resp.status}")
+            return await resp.json()
+
     async def get_cameras(self) -> list[dict]:
         async with self._session.get(
             f"{self._host}/api/cameras", headers=self._headers
