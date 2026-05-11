@@ -16,6 +16,7 @@ from custom_components.vedetta.binary_sensor import (
     VedettaObjectCountSensor,
     VedettaOperationalSensor,
     VedettaZonePresenceSensor,
+    _parse_object_count_topic,
 )
 
 
@@ -150,6 +151,74 @@ def test_object_count_invalid_payload_no_state_change() -> None:
     assert sensor._attr_is_on is True
     assert sensor._count == 2
     sensor.async_write_ha_state.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Object-count topic parser
+#
+# The dynamic-discovery handler subscribes to `{prefix}/+/+` and must reject
+# system-level topics (e.g. `vedetta/status/disk`, whose JSON payload would
+# fail `int()` and spam the log on every disk-status update) and per-camera
+# sub-topics that aren't object counts (snapshots, doorbell events).
+# ---------------------------------------------------------------------------
+
+
+def test_parse_object_count_topic_camera_label() -> None:
+    """A two-part camera/label topic is parsed as an object count."""
+    assert _parse_object_count_topic("vedetta", "vedetta/front_door/person") == (
+        "front_door",
+        "person",
+    )
+
+
+def test_parse_object_count_topic_rejects_status_disk() -> None:
+    """`{prefix}/status/disk` is a system topic with a JSON payload, not a count."""
+    assert _parse_object_count_topic("vedetta", "vedetta/status/disk") is None
+
+
+def test_parse_object_count_topic_rejects_events_subtopic() -> None:
+    assert _parse_object_count_topic("vedetta", "vedetta/events/front_door") is None
+
+
+def test_parse_object_count_topic_rejects_camera_subtopic() -> None:
+    """`{prefix}/camera/<name>` is the HA discovery namespace, not a count."""
+    # Two-part match: `camera/<name>` would have been treated as camera=camera, label=<name>.
+    assert _parse_object_count_topic("vedetta", "vedetta/camera/front_door") is None
+
+
+def test_parse_object_count_topic_rejects_presence_subtopic() -> None:
+    assert _parse_object_count_topic("vedetta", "vedetta/presence/driveway") is None
+
+
+def test_parse_object_count_topic_rejects_objects_subtopic() -> None:
+    assert _parse_object_count_topic("vedetta", "vedetta/objects/azarjah") is None
+
+
+def test_parse_object_count_topic_rejects_snapshot_label() -> None:
+    """`{prefix}/<camera>/snapshot` carries JPEG bytes, not a count."""
+    assert _parse_object_count_topic("vedetta", "vedetta/front_door/snapshot") is None
+
+
+def test_parse_object_count_topic_rejects_doorbell_label() -> None:
+    """`{prefix}/<camera>/doorbell` is a press event, not a count."""
+    assert _parse_object_count_topic("vedetta", "vedetta/front_door/doorbell") is None
+
+
+def test_parse_object_count_topic_rejects_wrong_prefix() -> None:
+    assert _parse_object_count_topic("vedetta", "frigate/front_door/person") is None
+
+
+def test_parse_object_count_topic_rejects_single_part() -> None:
+    """`{prefix}/availability` is a one-part topic and isn't an object count."""
+    assert _parse_object_count_topic("vedetta", "vedetta/availability") is None
+
+
+def test_parse_object_count_topic_rejects_three_parts() -> None:
+    """Three-part topics like `{prefix}/<camera>/<label>/snapshot` aren't counts."""
+    assert (
+        _parse_object_count_topic("vedetta", "vedetta/front_door/person/snapshot")
+        is None
+    )
 
 
 # ---------------------------------------------------------------------------

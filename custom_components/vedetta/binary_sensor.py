@@ -23,6 +23,36 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+# Two-part `{prefix}/X/Y` topics whose first segment is NOT a camera. These
+# are system or namespace topics (status/disk, HA discovery, presence, etc.)
+# that must never be matched as object-count sensors.
+_NON_OBJECT_COUNT_TOPICS = frozenset({"camera", "events", "objects", "presence", "status"})
+
+# Two-part `{prefix}/<camera>/Y` topics whose second segment is a per-camera
+# sub-topic, not a label count (snapshot is JPEG bytes; doorbell is an event).
+_NON_OBJECT_COUNT_LABELS = frozenset({"doorbell", "snapshot"})
+
+
+def _parse_object_count_topic(prefix: str, topic: str) -> tuple[str, str] | None:
+    """Return (camera, label) if `topic` is an object-count topic, else None.
+
+    Object-count topics follow `{prefix}/{camera}/{label}` exactly — two path
+    components after the prefix. System topics (`{prefix}/status/disk`) and
+    per-camera sub-topics (`{prefix}/{camera}/snapshot`) match the same
+    wildcard but must not become sensors.
+    """
+    if not topic.startswith(prefix + "/"):
+        return None
+    parts = topic[len(prefix) + 1:].split("/")
+    if len(parts) != 2:
+        return None
+    camera_name, label = parts
+    if camera_name in _NON_OBJECT_COUNT_TOPICS:
+        return None
+    if label in _NON_OBJECT_COUNT_LABELS:
+        return None
+    return camera_name, label
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -75,20 +105,10 @@ async def async_setup_entry(
     @callback
     def _handle_object_count_discovery(msg: mqtt.ReceiveMessage) -> None:
         """Discover object count sensors from wildcard subscription."""
-        # Topic pattern: {prefix}/{camera}/{label}
-        # Skip snapshot sub-topics: {prefix}/{camera}/{label}/snapshot
-        topic = msg.topic
-        remainder = topic[len(prefix) + 1:]  # strip "prefix/"
-        parts = remainder.split("/")
-
-        # Exactly two parts: camera and label (no snapshot suffix)
-        if len(parts) != 2:
+        parsed = _parse_object_count_topic(prefix, msg.topic)
+        if parsed is None:
             return
-
-        camera_name, label = parts
-        # Skip known sub-topic prefixes that aren't object counts
-        if camera_name in ("events", "camera", "presence", "objects"):
-            return
+        camera_name, label = parsed
 
         key = (camera_name, label)
         if key in discovered_object_count:
