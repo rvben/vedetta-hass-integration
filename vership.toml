@@ -1,0 +1,15 @@
+# vership.toml — release configuration for the Vedetta HA integration.
+# vership auto-detects this as a Python project and bumps pyproject.toml::version.
+# The HA-facing version, however, lives in manifest.json — the [[version_files]]
+# entry below keeps it in lockstep so HACS/HA never see a version skew on release.
+
+[project]
+branch = "main"
+
+[checks]
+lint = true
+tests = true
+
+[[version_files]]
+glob = "custom_components/vedetta/manifest.json"
+field = "version"
