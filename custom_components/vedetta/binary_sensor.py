@@ -8,6 +8,7 @@ from homeassistant.components.binary_sensor import BinarySensorDeviceClass, Bina
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -17,6 +18,7 @@ from .const import (
     MQTT_TOPIC_CAMERA_STATUS,
     MQTT_TOPIC_OBJECT_COUNT,
     MQTT_TOPIC_PRESENCE,
+    SIGNAL_NEW_CAMERAS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -40,10 +42,30 @@ async def async_setup_entry(
     entities.append(VedettaAvailabilitySensor(entry, prefix))
 
     # One camera status sensor per known camera
+    known_camera_names: set[str] = set()
     for camera in coordinator.cameras:
         entities.append(VedettaCameraStatusSensor(entry, prefix, camera["name"]))
+        known_camera_names.add(camera["name"])
 
     async_add_entities(entities)
+
+    @callback
+    def _add_status_sensors_for_new_cameras(new_cameras: list[dict]) -> None:
+        fresh = [c for c in new_cameras if c["name"] not in known_camera_names]
+        if not fresh:
+            return
+        known_camera_names.update(c["name"] for c in fresh)
+        async_add_entities(
+            VedettaCameraStatusSensor(entry, prefix, c["name"]) for c in fresh
+        )
+
+    entry.async_on_unload(
+        async_dispatcher_connect(
+            hass,
+            SIGNAL_NEW_CAMERAS.format(entry_id=entry.entry_id),
+            _add_status_sensors_for_new_cameras,
+        )
+    )
 
     # Dynamic discovery: object count and zone presence sensors are created on
     # first matching MQTT message and added via async_add_entities.

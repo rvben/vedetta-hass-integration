@@ -18,6 +18,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         host=entry.data["host"],
         token=entry.data["api_token"],
         mqtt_prefix=entry.data.get(CONF_MQTT_PREFIX, DEFAULT_MQTT_PREFIX),
+        entry_id=entry.entry_id,
     )
     await coordinator.async_setup()
 

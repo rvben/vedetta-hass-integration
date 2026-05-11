@@ -189,3 +189,119 @@ async def test_camera_device_name_prefixed() -> None:
 async def test_camera_device_name_prefixed_backyard() -> None:
     cam = make_camera("backyard")
     assert cam.device_info["name"] == "Vedetta backyard"
+
+
+# ---------------------------------------------------------------------------
+# Availability (MQTT-driven)
+# ---------------------------------------------------------------------------
+
+
+def _msg(payload: str) -> MagicMock:
+    """Build an MQTT-style message stub with a payload attribute."""
+    m = MagicMock()
+    m.payload = payload
+    return m
+
+
+async def test_camera_starts_unavailable() -> None:
+    """A fresh camera entity defaults to unavailable until MQTT confirms it."""
+    cam = make_camera("front-door")
+    assert cam.available is False
+
+
+async def test_camera_available_when_nvr_online_and_camera_on() -> None:
+    """Camera is available only when BOTH NVR availability and camera status are positive."""
+    cam = make_camera("front-door")
+    cam.async_write_ha_state = MagicMock()
+
+    cam._handle_nvr_availability(_msg("online"))
+    cam._handle_camera_status(_msg("ON"))
+
+    assert cam.available is True
+
+
+async def test_camera_unavailable_when_nvr_offline() -> None:
+    """An offline NVR makes the camera unavailable regardless of camera status."""
+    cam = make_camera("front-door")
+    cam.async_write_ha_state = MagicMock()
+
+    cam._handle_camera_status(_msg("ON"))
+    cam._handle_nvr_availability(_msg("offline"))
+
+    assert cam.available is False
+
+
+async def test_camera_unavailable_when_camera_status_off() -> None:
+    """A camera reporting OFF is unavailable even if the NVR is online."""
+    cam = make_camera("front-door")
+    cam.async_write_ha_state = MagicMock()
+
+    cam._handle_nvr_availability(_msg("online"))
+    cam._handle_camera_status(_msg("OFF"))
+
+    assert cam.available is False
+
+
+async def test_camera_unknown_payload_is_unavailable() -> None:
+    """Unknown status payloads are treated as 'not on'."""
+    cam = make_camera("front-door")
+    cam.async_write_ha_state = MagicMock()
+
+    cam._handle_nvr_availability(_msg("online"))
+    cam._handle_camera_status(_msg("WHATEVER"))
+
+    assert cam.available is False
+
+
+async def test_camera_status_recovers_after_offline() -> None:
+    """Going offline then back online toggles availability accordingly."""
+    cam = make_camera("front-door")
+    cam.async_write_ha_state = MagicMock()
+
+    cam._handle_nvr_availability(_msg("online"))
+    cam._handle_camera_status(_msg("ON"))
+    assert cam.available is True
+
+    cam._handle_camera_status(_msg("OFF"))
+    assert cam.available is False
+
+    cam._handle_camera_status(_msg("ON"))
+    assert cam.available is True
+
+
+async def test_camera_availability_writes_state_on_change() -> None:
+    """State writes happen on each transition so HA UI reflects updates."""
+    cam = make_camera("front-door")
+    cam.async_write_ha_state = MagicMock()
+
+    cam._handle_nvr_availability(_msg("online"))
+    cam._handle_camera_status(_msg("ON"))
+
+    assert cam.async_write_ha_state.call_count >= 1
+
+
+async def test_camera_subscribes_to_expected_topics() -> None:
+    """async_added_to_hass subscribes to both NVR availability and per-camera status topics."""
+    cam = make_camera("front-door")
+    cam._coordinator.mqtt_prefix = "vedetta"
+
+    # async_on_remove is provided by Entity; replace with a recording stub.
+    cam.async_on_remove = MagicMock()
+
+    subscribed_topics: list[str] = []
+
+    async def fake_subscribe(hass, topic, callback):
+        subscribed_topics.append(topic)
+        return lambda: None
+
+    from custom_components.vedetta import camera as camera_module
+
+    original = camera_module.mqtt.async_subscribe
+    camera_module.mqtt.async_subscribe = fake_subscribe
+    try:
+        await cam.async_added_to_hass()
+    finally:
+        camera_module.mqtt.async_subscribe = original
+
+    assert "vedetta/availability" in subscribed_topics
+    assert "vedetta/camera/front-door/status" in subscribed_topics

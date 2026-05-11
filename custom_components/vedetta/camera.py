@@ -1,13 +1,20 @@
 from __future__ import annotations
 
+from homeassistant.components import mqtt
 from homeassistant.components.camera import Camera, CameraEntityFeature
 from homeassistant.components.camera.webrtc import WebRTCAnswer, WebRTCSendMessage
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN
+from .const import (
+    DOMAIN,
+    MQTT_TOPIC_AVAILABILITY,
+    MQTT_TOPIC_CAMERA_STATUS,
+    SIGNAL_NEW_CAMERAS,
+)
 from .coordinator import VedettaCoordinator
 
 
@@ -17,8 +24,25 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator: VedettaCoordinator = hass.data[DOMAIN][entry.entry_id]
+    known: set[str] = {c["name"] for c in coordinator.cameras}
     async_add_entities(
         VedettaCamera(entry, coordinator, camera) for camera in coordinator.cameras
+    )
+
+    @callback
+    def _add_new_cameras(new_cameras: list[dict]) -> None:
+        fresh = [c for c in new_cameras if c["name"] not in known]
+        if not fresh:
+            return
+        known.update(c["name"] for c in fresh)
+        async_add_entities(VedettaCamera(entry, coordinator, c) for c in fresh)
+
+    entry.async_on_unload(
+        async_dispatcher_connect(
+            hass,
+            SIGNAL_NEW_CAMERAS.format(entry_id=entry.entry_id),
+            _add_new_cameras,
+        )
     )
 
 
@@ -27,6 +51,13 @@ class VedettaCamera(Camera):
 
     Supports WebRTC for low-latency live streaming, with MJPEG as a fallback.
     On-demand snapshots are fetched directly from the Vedetta API.
+
+    Availability is driven by two MQTT topics:
+      * NVR-level availability  ({prefix}/availability — "online"/"offline")
+      * Per-camera status       ({prefix}/camera/{name}/status — "ON"/"OFF")
+    A camera is reported available only when BOTH report a positive value.
+    The entity starts unavailable so HA shows the correct state until MQTT
+    catches up after a restart.
     """
 
     _attr_supported_features = CameraEntityFeature.STREAM
@@ -38,12 +69,46 @@ class VedettaCamera(Camera):
         self._coordinator = coordinator
         self._camera_name: str = camera["name"]
         self._active_sessions: set[str] = set()
+        self._nvr_online: bool = False
+        self._camera_on: bool = False
+        self._attr_available = False
         self._attr_unique_id = f"{entry.entry_id}_{self._camera_name}_camera"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"{entry.entry_id}_{self._camera_name}")},
             name=f"Vedetta {self._camera_name}",
             manufacturer="Vedetta",
         )
+
+    @property
+    def available(self) -> bool:
+        return self._nvr_online and self._camera_on
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to MQTT availability topics for this camera."""
+        prefix = self._coordinator.mqtt_prefix
+        availability_topic = MQTT_TOPIC_AVAILABILITY.format(prefix=prefix)
+        status_topic = MQTT_TOPIC_CAMERA_STATUS.format(
+            prefix=prefix, camera=self._camera_name
+        )
+
+        unsub_avail = await mqtt.async_subscribe(
+            self.hass, availability_topic, self._handle_nvr_availability
+        )
+        unsub_status = await mqtt.async_subscribe(
+            self.hass, status_topic, self._handle_camera_status
+        )
+        self.async_on_remove(unsub_avail)
+        self.async_on_remove(unsub_status)
+
+    @callback
+    def _handle_nvr_availability(self, msg: mqtt.ReceiveMessage) -> None:
+        self._nvr_online = msg.payload == "online"
+        self.async_write_ha_state()
+
+    @callback
+    def _handle_camera_status(self, msg: mqtt.ReceiveMessage) -> None:
+        self._camera_on = msg.payload == "ON"
+        self.async_write_ha_state()
 
     async def async_camera_image(
         self, width: int | None = None, height: int | None = None

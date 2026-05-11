@@ -16,3 +16,8 @@ ATTR_SCORE = "score"
 ATTR_ZONE = "zone_name"
 ATTR_OBJECT_NAME = "object_name"
 ATTR_BOX = "box"
+
+# Dispatcher signal fired when the coordinator's periodic poll discovers a
+# camera that was not present in the previous snapshot. Payload: list[dict] of
+# camera dicts (same shape as VedettaApiClient.get_cameras() entries).
+SIGNAL_NEW_CAMERAS = "vedetta_new_cameras_{entry_id}"
