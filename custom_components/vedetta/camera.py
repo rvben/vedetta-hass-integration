@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from homeassistant.components import mqtt
 from homeassistant.components.camera import Camera, CameraEntityFeature
-from homeassistant.components.camera.webrtc import WebRTCAnswer, WebRTCSendMessage
+from homeassistant.components.camera.webrtc import (
+    RTCIceCandidateInit,
+    WebRTCAnswer,
+    WebRTCSendMessage,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -143,3 +147,17 @@ class VedettaCamera(Camera):
     def close_webrtc_session(self, session_id: str) -> None:
         """Remove a closed WebRTC session so the camera can be re-opened."""
         self._active_sessions.discard(session_id)
+
+    async def async_on_webrtc_candidate(
+        self, session_id: str, candidate: RTCIceCandidateInit
+    ) -> None:
+        """Absorb trickled ICE candidates from the browser.
+
+        Vedetta's NVR uses non-trickle ICE: the SDP answer returned by
+        `POST /api/cameras/{name}/webrtc/offer` already contains every server
+        candidate inline, and there is no candidate endpoint to forward to.
+        We must still accept the WebSocket messages HA generates, otherwise
+        the base class raises `HomeAssistantError("Cannot handle WebRTC
+        candidate")` and the negotiation aborts before media starts flowing.
+        """
+        return None

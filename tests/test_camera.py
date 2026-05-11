@@ -280,6 +280,43 @@ async def test_camera_availability_writes_state_on_change() -> None:
     assert cam.async_write_ha_state.call_count >= 1
 
 
+# ---------------------------------------------------------------------------
+# WebRTC trickle-ICE candidates
+#
+# The Vedetta NVR uses non-trickle ICE: HandleOffer waits for
+# GatheringCompletePromise before returning the SDP answer, and the answer
+# contains every server candidate inline. There is no /webrtc/candidate
+# endpoint on the NVR — so the integration must absorb the browser's trickled
+# candidates instead of letting HA's default implementation raise
+# `HomeAssistantError("Cannot handle WebRTC candidate")`, which would abort the
+# negotiation and leave the camera entity stuck in `idle`.
+# ---------------------------------------------------------------------------
+
+
+async def test_webrtc_candidate_is_a_no_op() -> None:
+    """Trickled ICE candidates from the browser must be absorbed silently."""
+    cam = make_camera("front-door")
+    result = await cam.async_on_webrtc_candidate(
+        "session-trickle", MagicMock()
+    )
+    assert result is None
+
+
+async def test_webrtc_candidate_accepts_multiple_sessions() -> None:
+    """A single camera handles trickled candidates for many concurrent sessions."""
+    cam = make_camera("front-door")
+    for session_id in ("s1", "s2", "s3"):
+        await cam.async_on_webrtc_candidate(session_id, MagicMock())
+
+
+async def test_webrtc_candidate_does_not_call_api() -> None:
+    """Trickled candidates must never be forwarded to the NVR (no endpoint)."""
+    cam = make_camera("front-door")
+    await cam.async_on_webrtc_candidate("session-x", MagicMock())
+    # The API mock would record any call; the candidate path must not touch it.
+    assert not cam._coordinator.api.method_calls
+
+
 async def test_camera_subscribes_to_expected_topics() -> None:
     """async_added_to_hass subscribes to both NVR availability and per-camera status topics."""
     cam = make_camera("front-door")
