@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from homeassistant.components import mqtt
 from homeassistant.components.image import ImageEntity
@@ -53,7 +53,11 @@ class VedettaDetectionImage(ImageEntity):
 
     async def async_added_to_hass(self) -> None:
         topic = f"{self._coordinator.mqtt_prefix}/{self._camera_name}/+/snapshot"
-        unsub = await mqtt.async_subscribe(self.hass, topic, self._handle_snapshot)
+        # JPEG payloads are binary. MQTT's default UTF-8 decoding rejects them
+        # before our callback and can log the entire image as a decode error.
+        unsub = await mqtt.async_subscribe(
+            self.hass, topic, self._handle_snapshot, encoding=None
+        )
         self.async_on_remove(unsub)
 
     @callback
@@ -63,7 +67,7 @@ class VedettaDetectionImage(ImageEntity):
         parts = msg.topic.split("/")
         label = parts[-2] if len(parts) >= 2 else "unknown"
         self._attr_extra_state_attributes = {"label": label}
-        self._attr_image_last_updated = datetime.now(timezone.utc)
+        self._attr_image_last_updated = datetime.now(UTC)
         self.async_write_ha_state()
 
     async def async_image(self) -> bytes | None:

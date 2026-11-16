@@ -19,6 +19,10 @@ def make_camera(camera_name: str = "front-door", ptz: bool = False) -> VedettaCa
     entry = make_entry()
     coordinator = MagicMock(spec=VedettaCoordinator)
     coordinator.api = AsyncMock()
+    coordinator.camera_roster_available = True
+    coordinator.health_coordinator = MagicMock()
+    coordinator.health_coordinator.last_update_success = True
+    coordinator.get_camera.return_value = {"name": camera_name, "sleeping": False}
     camera_dict = {"name": camera_name, "ptz": ptz}
     return VedettaCamera(entry, coordinator, camera_dict)
 
@@ -209,6 +213,34 @@ async def test_camera_starts_unavailable() -> None:
     assert cam.available is False
 
 
+@pytest.mark.parametrize(
+    ('sleeping', 'nvr_online', 'roster_fresh', 'health_ok', 'expected'),
+    [
+        (True, True, True, True, True),
+        (False, True, True, True, False),
+        (True, False, True, True, False),
+        (True, True, False, True, False),
+        (True, True, True, False, False),
+    ],
+)
+async def test_sleeping_camera_requires_fresh_roster_and_online_nvr(
+    sleeping, nvr_online, roster_fresh, health_ok, expected
+) -> None:
+    cam = make_camera('driveway')
+    cam._nvr_online = nvr_online
+    cam._coordinator.get_camera.return_value['sleeping'] = sleeping
+    cam._coordinator.camera_roster_available = roster_fresh
+    cam._coordinator.health_coordinator.last_update_success = health_ok
+    assert cam.available is expected
+
+
+async def test_sleeping_camera_removed_from_roster_is_unavailable() -> None:
+    cam = make_camera('driveway')
+    cam._nvr_online = True
+    cam._coordinator.get_camera.return_value = None
+    assert cam.available is False
+
+
 async def test_camera_available_when_nvr_online_and_camera_on() -> None:
     """Camera is available only when BOTH NVR availability and camera status are positive."""
     cam = make_camera("front-door")
@@ -342,3 +374,6 @@ async def test_camera_subscribes_to_expected_topics() -> None:
 
     assert "vedetta/availability" in subscribed_topics
     assert "vedetta/camera/front-door/status" in subscribed_topics
+    cam._coordinator.health_coordinator.async_add_listener.assert_called_once_with(
+        cam.async_write_ha_state
+    )

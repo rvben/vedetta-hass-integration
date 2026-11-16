@@ -1,5 +1,5 @@
 from datetime import timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from custom_components.vedetta.image import VedettaDetectionImage
 
@@ -87,3 +87,15 @@ async def test_async_image_returns_none_when_no_snapshot_received() -> None:
     result = await entity.async_image()
 
     assert result is None
+
+
+async def test_mqtt_subscription_preserves_non_utf8_jpeg_bytes() -> None:
+    entity = _make_entity()
+    entity.async_on_remove = MagicMock()
+    jpeg = b'\xff\xd8\xff\xe0binary-jpeg'
+    with patch('custom_components.vedetta.image.mqtt.async_subscribe', new_callable=AsyncMock) as subscribe:
+        await entity.async_added_to_hass()
+    assert subscribe.call_args.kwargs['encoding'] is None
+    callback = subscribe.call_args.args[2]
+    callback(_make_mqtt_msg('vedetta/front-door/person/snapshot', jpeg))
+    assert await entity.async_image() == jpeg

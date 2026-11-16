@@ -1,7 +1,7 @@
 .PHONY: test lint
 
 test:
-	uv run pytest tests/ -v
+	uv run --extra test python -m pytest tests/ -v
 
 lint:
-	uv run ruff check custom_components/
+	uv run --with ruff ruff check custom_components/

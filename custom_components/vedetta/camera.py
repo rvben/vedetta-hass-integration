@@ -59,7 +59,9 @@ class VedettaCamera(Camera):
     Availability is driven by two MQTT topics:
       * NVR-level availability  ({prefix}/availability — "online"/"offline")
       * Per-camera status       ({prefix}/camera/{name}/status — "ON"/"OFF")
-    A camera is reported available only when BOTH report a positive value.
+    An online NVR and positive camera status make a camera available. A fresh
+    API roster can also identify a sleeping battery camera as available for
+    on-demand playback; sleeping is not a connection failure.
     The entity starts unavailable so HA shows the correct state until MQTT
     catches up after a restart.
     """
@@ -85,7 +87,14 @@ class VedettaCamera(Camera):
 
     @property
     def available(self) -> bool:
-        return self._nvr_online and self._camera_on
+        camera = self._coordinator.get_camera(self._camera_name)
+        sleeping = (
+            self._coordinator.camera_roster_available
+            and self._coordinator.health_coordinator.last_update_success
+            and camera is not None
+            and camera.get("sleeping") is True
+        )
+        return self._nvr_online and (self._camera_on or sleeping)
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to MQTT availability topics for this camera."""
@@ -103,6 +112,9 @@ class VedettaCamera(Camera):
         )
         self.async_on_remove(unsub_avail)
         self.async_on_remove(unsub_status)
+        self.async_on_remove(
+            self._coordinator.health_coordinator.async_add_listener(self.async_write_ha_state)
+        )
 
     @callback
     def _handle_nvr_availability(self, msg: mqtt.ReceiveMessage) -> None:
@@ -160,4 +172,4 @@ class VedettaCamera(Camera):
         the base class raises `HomeAssistantError("Cannot handle WebRTC
         candidate")` and the negotiation aborts before media starts flowing.
         """
-        return None
+        return
