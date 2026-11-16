@@ -1,5 +1,4 @@
 import voluptuous as vol
-from aiohttp import ClientError
 from homeassistant.config_entries import ConfigFlow
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
@@ -31,7 +30,7 @@ class VedettaConfigFlow(ConfigFlow, domain=DOMAIN):
 
             try:
                 healthy = await client.check_health()
-            except (ClientError, TimeoutError):
+            except Exception:  # noqa: BLE001 - keep connectivity failures in the setup form
                 healthy = False
 
             if healthy:

@@ -56,7 +56,7 @@ class VedettaCamera(Camera):
     Supports WebRTC for low-latency live streaming, with MJPEG as a fallback.
     On-demand snapshots are fetched directly from the Vedetta API.
 
-    Availability is driven by two MQTT topics:
+    Availability combines the API camera roster and two MQTT topics:
       * NVR-level availability  ({prefix}/availability — "online"/"offline")
       * Per-camera status       ({prefix}/camera/{name}/status — "ON"/"OFF")
     An online NVR and positive camera status make a camera available. A fresh
@@ -77,7 +77,6 @@ class VedettaCamera(Camera):
         self._active_sessions: set[str] = set()
         self._nvr_online: bool = False
         self._camera_on: bool = False
-        self._attr_available = False
         self._attr_unique_id = f"{entry.entry_id}_{self._camera_name}_camera"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"{entry.entry_id}_{self._camera_name}")},

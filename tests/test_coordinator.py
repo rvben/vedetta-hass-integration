@@ -13,7 +13,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from custom_components.vedetta import coordinator as coordinator_module
-from custom_components.vedetta.api import VedettaApiError
 from custom_components.vedetta.const import SIGNAL_NEW_CAMERAS
 from custom_components.vedetta.coordinator import VedettaCoordinator
 
@@ -134,7 +133,7 @@ async def test_refresh_continues_when_camera_list_call_fails() -> None:
     """A flaky camera-list call must not break health polling — degrade gracefully."""
     coord = _make_coordinator([{"name": "front"}])
     coord.api.get_health = AsyncMock(return_value={"status": "ok"})
-    coord.api.get_cameras = AsyncMock(side_effect=VedettaApiError("nope"))
+    coord.api.get_cameras = AsyncMock(side_effect=RuntimeError("nope"))
 
     with patch.object(coordinator_module, "async_dispatcher_send") as send:
         result = await coord._async_fetch_health()
@@ -144,3 +143,15 @@ async def test_refresh_continues_when_camera_list_call_fails() -> None:
     # Previous roster preserved so the UI doesn't blink to "no cameras".
     assert [c["name"] for c in coord.cameras] == ["front"]
     assert coord.camera_roster_available is False
+
+
+@pytest.mark.parametrize('bad_roster', [[{}], ['invalid-camera'], None])
+async def test_malformed_roster_preserves_nvr_health(bad_roster) -> None:
+    coord = _make_coordinator([{'name': 'front'}])
+    coord.api.get_health.return_value = {'status': 'ok'}
+    coord.api.get_cameras.return_value = bad_roster
+    with patch.object(coordinator_module, 'async_dispatcher_send') as send:
+        assert await coord._async_fetch_health() == {'status': 'ok'}
+    assert coord.camera_roster_available is False
+    assert coord.cameras == [{'name': 'front'}]
+    send.assert_not_called()

@@ -1,13 +1,12 @@
 import logging
 from datetime import timedelta
 
-from aiohttp import ClientError
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .api import VedettaApiClient, VedettaApiError
+from .api import VedettaApiClient
 from .const import SIGNAL_NEW_CAMERAS
 
 _LOGGER = logging.getLogger(__name__)
@@ -64,13 +63,13 @@ class VedettaCoordinator:
     async def _refresh_camera_roster(self) -> None:
         try:
             cameras = await self.api.get_cameras()
-        except (ClientError, TimeoutError, VedettaApiError, ValueError) as err:
+            known = {c["name"] for c in self.cameras}
+            new_cameras = [c for c in cameras if c["name"] not in known]
+        except Exception as err:  # noqa: BLE001 - roster failures must not suppress NVR health
             self.camera_roster_available = False
             _LOGGER.debug("camera list refresh failed: %s", err)
             return
 
-        known = {c["name"] for c in self.cameras}
-        new_cameras = [c for c in cameras if c["name"] not in known]
         self.cameras = cameras
         self.camera_roster_available = True
 
